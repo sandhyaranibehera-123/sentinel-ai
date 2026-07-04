@@ -1,7 +1,8 @@
 -- Migration 011: Performance indexes for high-volume tables
 -- These cover the most common filter patterns in the API layer.
-
-BEGIN;
+-- NOTE: CREATE INDEX CONCURRENTLY cannot run inside a transaction block,
+-- so this file intentionally has no BEGIN/COMMIT — migrate.ts runs each
+-- statement here individually.
 
 -- ── security_events ──────────────────────────────────────────────────────────
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_security_events_org_severity
@@ -22,7 +23,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_incidents_org_status
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_incidents_sla_breach
   ON incidents (organization_id, sla_breach_at)
-  WHERE sla_breached = false AND status NOT IN ('resolved', 'closed');
+  WHERE sla_breached = false AND status NOT IN ('recovered', 'closed');
 
 -- ── alerts ───────────────────────────────────────────────────────────────────
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_alerts_org_status
@@ -79,5 +80,3 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_audit_logs_resource
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_notifications_user_unread
   ON notifications (organization_id, user_id, is_read, created_at DESC)
   WHERE is_read = false;
-
-COMMIT;

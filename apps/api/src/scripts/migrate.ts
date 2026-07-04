@@ -9,7 +9,7 @@ const migrationsDir = join(__dirname, "../../../../database/migrations");
 
 async function migrate() {
   const url = process.env.DATABASE_URL ?? "postgresql://nexus:nexus@localhost:5432/nexus";
-  const sql = postgres(url);
+  const sql = postgres(url, { max: 1 });
 
   await sql`
     CREATE TABLE IF NOT EXISTS _migrations (
@@ -33,7 +33,20 @@ async function migrate() {
     }
     console.log(`▶  Applying ${file}...`);
     const content = readFileSync(join(migrationsDir, file), "utf-8");
-    await sql.unsafe(content);
+    if (content.includes("CONCURRENTLY")) {
+      // CREATE INDEX CONCURRENTLY cannot run inside a transaction block, and
+      // postgres.js implicitly wraps multi-statement `unsafe()` calls in one —
+      // so run each statement in the file as its own round trip.
+      const statements = content
+        .split(";\n")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && !s.startsWith("--"));
+      for (const statement of statements) {
+        await sql.unsafe(statement);
+      }
+    } else {
+      await sql.unsafe(content);
+    }
     await sql`INSERT INTO _migrations (name) VALUES (${file})`;
     console.log(`✓  Applied ${file}`);
   }
